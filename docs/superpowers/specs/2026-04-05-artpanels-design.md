@@ -31,14 +31,16 @@ The FLUX FastAPI server is the existing avatar generation server from the choira
 
 ## Workflow
 
-Six-phase pipeline, non-linear (user can jump back to any phase):
+Six-phase pipeline, non-linear (user can jump back to any phase). Multiple candidates can progress through stages 3-6 in parallel within a single project.
 
 1. **Create Project** — Name, description, theme, panel dimensions (from template or custom mm), min/max thickness.
 2. **Explore Designs** — Enter prompts, generate batches of images (configurable count), star favorites, tweak prompts, generate more. Full prompt + parameter history preserved per generation.
-3. **Select Candidate** — Pick one starred image as the basis for the physical panel.
-4. **Color Mapping** — Quantize the selected image to N colors (matching CMS slot count: 4/8/configurable). K-means clustering in CIELAB space. Auto-match each color to the nearest filament using Delta-E (CIEDE2000). Manual override per color. Preview the image re-rendered in filament colors.
-5. **3D Preview** — Interactive Three.js viewer showing the panel as a 3D mesh. Adjustable min/max thickness sliders. Backlighting simulation to preview translucency. Rotate, zoom, pan.
-6. **Export 3MF** — Generate a multi-material 3MF file with mesh geometry and filament/material assignments. Download for import into Creality Print, OrcaSlicer, or Cura.
+3. **Promote to Candidate** — Promote any starred image to a candidate (give it a name, e.g. "Art Nouveau v2"). Multiple candidates can be active simultaneously. Each candidate is an independent pipeline from here forward.
+4. **Color Mapping** (per candidate) — Quantize the candidate's image to N colors (matching CMS slot count: 4/8/configurable). K-means clustering in CIELAB space. Auto-match each color to the nearest filament using Delta-E (CIEDE2000). Manual override per color. Preview the image re-rendered in filament colors.
+5. **3D Preview** (per candidate) — Interactive Three.js viewer showing the panel as a 3D mesh. Adjustable min/max thickness sliders. Backlighting simulation to preview translucency. Rotate, zoom, pan.
+6. **Export 3MF** (per candidate) — Generate a multi-material 3MF file with mesh geometry and filament/material assignments. Download for import into Creality Print, OrcaSlicer, or Cura.
+
+The project overview page shows all candidates as cards with their individual status, enabling side-by-side comparison.
 
 ## Data Model
 
@@ -53,7 +55,7 @@ Six-phase pipeline, non-linear (user can jump back to any phase):
 | height_mm | int | Panel physical height |
 | thickness_min_mm | float | Thinnest point, e.g. 0.4mm |
 | thickness_max_mm | float | Thickest point, e.g. 2.0mm |
-| status | enum | exploring, color_mapping, previewing, exported |
+| status | enum | exploring, active (has candidates) |
 | created_at | timestamp | |
 | updated_at | timestamp | |
 
@@ -79,16 +81,28 @@ One generation = one prompt execution producing N images.
 | thumbnail_path | text | |
 | seed | bigint | For reproducibility |
 | starred | boolean | |
-| selected | boolean | The chosen candidate |
 | notes | text | |
 | created_at | timestamp | |
+
+### Candidate
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | |
+| project_id | FK → Project | |
+| image_id | FK → Image | The source image |
+| name | text | e.g. "Art Nouveau v2" |
+| notes | text | |
+| status | enum | exploring_colors, previewing, exported |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+Promoted from a starred image. Each candidate owns its own color mappings and exports, progressing independently through the pipeline.
 
 ### ColorMapping
 | Column | Type | Notes |
 |--------|------|-------|
 | id | UUID PK | |
-| project_id | FK → Project | |
-| image_id | FK → Image | The selected candidate |
+| candidate_id | FK → Candidate | |
 | algorithm | text | k-means, manual, etc. |
 | num_colors | int | Matches CMS slot count |
 | mappings | jsonb | Array of {source_rgb, filament_id, target_rgb} |
@@ -115,7 +129,7 @@ Shared across all projects. Supports both personal inventory and manufacturer ca
 | Column | Type | Notes |
 |--------|------|-------|
 | id | UUID PK | |
-| project_id | FK → Project | |
+| candidate_id | FK → Candidate | |
 | color_mapping_id | FK → ColorMapping | |
 | file_path | text | .3mf file path |
 | format | text | 3mf, stl |
@@ -125,9 +139,10 @@ Shared across all projects. Supports both personal inventory and manufacturer ca
 ### Relationships
 ```
 Project  1 → N  Generation  1 → N  Image
-Project  1 → N  ColorMapping (one per attempt)
-Project  1 → N  Export
-ColorMapping → 1 Image (the selected candidate)
+Project  1 → N  Candidate (parallel tracks)
+Candidate → 1 Image (the source image)
+Candidate 1 → N  ColorMapping (one per attempt)
+Candidate 1 → N  Export
 ColorMapping.mappings[] → Filament (by filament_id)
 Filament is independent (shared across projects)
 ```
@@ -203,14 +218,14 @@ Output is directly importable by Creality Print, OrcaSlicer, and Cura with multi
 | Route | Purpose |
 |-------|---------|
 | `/` | Dashboard — project list with status cards, create new |
-| `/projects/:id` | Project overview — settings, status, quick actions |
-| `/projects/:id/explore` | Design Explorer — prompt bar, image grid, star/select |
-| `/projects/:id/colors` | Color Mapper — quantize, match filaments, preview |
-| `/projects/:id/preview` | 3D Preview — Three.js viewer, thickness controls, lighting |
-| `/projects/:id/export` | Export — generate 3MF, download, print settings |
+| `/projects/:id` | Project overview — candidate cards with status, settings |
+| `/projects/:id/explore` | Design Explorer — prompt bar, image grid, star, promote to candidate |
+| `/projects/:id/candidates/:cid/colors` | Color Mapper — quantize, match filaments, preview |
+| `/projects/:id/candidates/:cid/preview` | 3D Preview — Three.js viewer, thickness controls, lighting |
+| `/projects/:id/candidates/:cid/export` | Export — generate 3MF, download, print settings |
 | `/filaments` | Filament Library — manage owned inventory + browse catalogs |
 
-Navigation: tab bar at top of each project page (Explore → Colors → 3D → Export). Status guides the natural flow but doesn't restrict movement.
+Navigation: project-level tab for Explore, plus candidate-scoped tabs (Colors → 3D → Export) when viewing a specific candidate. Project overview shows all candidates as cards for comparison.
 
 ## Panel Dimensions
 
