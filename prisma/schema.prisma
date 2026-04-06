@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -10,4 +5,128 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+enum ProjectStatus {
+  exploring
+  active
+}
+
+enum CandidateStatus {
+  exploring_colors
+  previewing
+  exported
+}
+
+model Project {
+  id             String        @id @default(uuid())
+  name           String
+  description    String?
+  theme          String?
+  widthMm        Float         @map("width_mm")
+  heightMm       Float         @map("height_mm")
+  thicknessMinMm Float         @default(0.4) @map("thickness_min_mm")
+  thicknessMaxMm Float         @default(2.0) @map("thickness_max_mm")
+  status         ProjectStatus @default(exploring)
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  generations Generation[]
+  candidates  Candidate[]
+
+  @@map("projects")
+}
+
+model Generation {
+  id             String   @id @default(uuid())
+  projectId      String   @map("project_id")
+  prompt         String
+  negativePrompt String?  @map("negative_prompt")
+  provider       String   @default("local-flux")
+  modelParams    Json     @map("model_params")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  images  Image[]
+
+  @@map("generations")
+}
+
+model Image {
+  id            String   @id @default(uuid())
+  generationId  String   @map("generation_id")
+  filePath      String   @map("file_path")
+  thumbnailPath String?  @map("thumbnail_path")
+  seed          BigInt?
+  starred       Boolean  @default(false)
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  generation Generation  @relation(fields: [generationId], references: [id], onDelete: Cascade)
+  candidates Candidate[]
+
+  @@map("images")
+}
+
+model Candidate {
+  id        String          @id @default(uuid())
+  projectId String          @map("project_id")
+  imageId   String          @map("image_id")
+  name      String
+  notes     String?
+  status    CandidateStatus @default(exploring_colors)
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  image         Image          @relation(fields: [imageId], references: [id])
+  colorMappings ColorMapping[]
+  exports       Export[]
+
+  @@map("candidates")
+}
+
+model ColorMapping {
+  id          String   @id @default(uuid())
+  candidateId String   @map("candidate_id")
+  algorithm   String   @default("kmeans")
+  numColors   Int      @map("num_colors")
+  mappings    Json
+  previewPath String?  @map("preview_path")
+  isFinal     Boolean  @default(false) @map("is_final")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  exports   Export[]
+
+  @@map("color_mappings")
+}
+
+model Filament {
+  id          String  @id @default(uuid())
+  brand       String
+  name        String
+  colorName   String  @map("color_name")
+  hexColor    String  @map("hex_color")
+  material    String  @default("PLA")
+  translucent Boolean @default(false)
+  owned       Boolean @default(true)
+  notes       String?
+
+  @@map("filaments")
+}
+
+model Export {
+  id             String   @id @default(uuid())
+  candidateId    String   @map("candidate_id")
+  colorMappingId String   @map("color_mapping_id")
+  filePath       String   @map("file_path")
+  format         String   @default("3mf")
+  settings       Json
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  candidate    Candidate    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  colorMapping ColorMapping @relation(fields: [colorMappingId], references: [id])
+
+  @@map("exports")
 }
