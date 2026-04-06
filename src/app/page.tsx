@@ -15,17 +15,17 @@ export default async function DashboardPage() {
     <main className="container mx-auto p-8">
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-3xl font-bold">ArtPanels</h1>
-        <Button asChild>
-          <Link href="/projects/new">New Project</Link>
-        </Button>
+        <Link href="/projects/new">
+          <Button>New Project</Button>
+        </Link>
       </div>
 
       {projects.length === 0 ? (
         <div className="text-center py-24 text-muted-foreground">
           <p className="text-xl mb-4">No projects yet.</p>
-          <Button asChild variant="outline">
-            <Link href="/projects/new">Create your first project</Link>
-          </Button>
+          <Link href="/projects/new">
+            <Button variant="outline">Create your first project</Button>
+          </Link>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
