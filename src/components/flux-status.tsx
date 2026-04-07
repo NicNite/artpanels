@@ -19,6 +19,34 @@ export function FluxStatus() {
   const logEndRef = useRef<HTMLDivElement>(null);
   const startTimeRef = useRef<number | null>(null);
   const [panelSize, setPanelSize] = useState({ width: 520, height: 320 });
+  const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(null);
+
+  // Drag handling — drag title bar to move
+  const startDrag = useCallback((e: ReactMouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    // If no position set yet, compute from current DOM position
+    const el = (e.target as HTMLElement).closest("[data-log-panel]") as HTMLElement | null;
+    const rect = el?.getBoundingClientRect();
+    const startLeft = panelPos?.x ?? (rect?.left ?? 0);
+    const startTop = panelPos?.y ?? (rect?.top ?? 0);
+
+    function onMouseMove(ev: globalThis.MouseEvent) {
+      setPanelPos({
+        x: startLeft + (ev.clientX - startX),
+        y: startTop + (ev.clientY - startY),
+      });
+    }
+
+    function onMouseUp() {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    }
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, [panelPos]);
 
   // Resize handling — drag bottom-left corner to resize
   const startResize = useCallback((e: ReactMouseEvent) => {
@@ -155,7 +183,7 @@ export function FluxStatus() {
       <div className="flex items-center gap-2">
         <div className={`w-2 h-2 rounded-full ${dot}`} />
         <button
-          onClick={() => { setShowLogs(!showLogs); if (!showLogs) fetchLogs(); }}
+          onClick={() => { setShowLogs(!showLogs); if (!showLogs) { fetchLogs(); setPanelPos(null); } }}
           className="text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           {statusText}
@@ -194,11 +222,21 @@ export function FluxStatus() {
 
       {showLogs && (
         <div
-          className="absolute right-0 top-full mt-2 z-50 rounded-lg border bg-background shadow-lg flex flex-col"
-          style={{ width: panelSize.width, height: panelSize.height, minWidth: 320, minHeight: 160 }}
+          data-log-panel
+          className={`${panelPos ? "fixed" : "absolute right-0 top-full mt-2"} z-50 rounded-lg border bg-background shadow-lg flex flex-col`}
+          style={{
+            width: panelSize.width,
+            height: panelSize.height,
+            minWidth: 320,
+            minHeight: 160,
+            ...(panelPos ? { left: panelPos.x, top: panelPos.y } : {}),
+          }}
         >
-          {/* Title bar — drag handle for moving could be added later */}
-          <div className="flex items-center justify-between px-3 py-2 border-b shrink-0">
+          {/* Title bar — draggable */}
+          <div
+            className="flex items-center justify-between px-3 py-2 border-b shrink-0 cursor-grab active:cursor-grabbing select-none"
+            onMouseDown={startDrag}
+          >
             <span className="text-xs font-medium">FLUX Server Log</span>
             <div className="flex gap-1">
               <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={fetchLogs}>
