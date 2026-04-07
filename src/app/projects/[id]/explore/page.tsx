@@ -46,6 +46,7 @@ export default function ExplorePage({ params }: ExplorePageProps) {
   const [totalImages, setTotalImages] = useState(0);
   const [completedImages, setCompletedImages] = useState(0);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const loadImages = useCallback(async () => {
     try {
@@ -66,9 +67,25 @@ export default function ExplorePage({ params }: ExplorePageProps) {
 
   async function handleGenerate(prompt: string, count: number) {
     setIsGenerating(true);
+    setError(null);
     setProgressEvents([]);
     setTotalImages(count);
     setCompletedImages(0);
+
+    // Check if FLUX server is running before attempting generation
+    try {
+      const statusRes = await fetch("/api/flux");
+      const statusData = await statusRes.json();
+      if (!statusData.running) {
+        setError("FLUX server is not running. Start it from the nav bar (Start or Mock button).");
+        setIsGenerating(false);
+        return;
+      }
+    } catch {
+      setError("Could not check FLUX server status.");
+      setIsGenerating(false);
+      return;
+    }
 
     try {
       const res = await fetch(`/api/projects/${id}/generations`, {
@@ -78,6 +95,7 @@ export default function ExplorePage({ params }: ExplorePageProps) {
       });
 
       if (!res.ok || !res.body) {
+        setError("Generation request failed. Check the FLUX server logs.");
         setIsGenerating(false);
         return;
       }
@@ -135,7 +153,7 @@ export default function ExplorePage({ params }: ExplorePageProps) {
         }
       }
     } catch (err) {
-      console.error("Generation failed:", err);
+      setError(`Generation failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsGenerating(false);
     }
@@ -144,6 +162,12 @@ export default function ExplorePage({ params }: ExplorePageProps) {
   return (
     <div className="flex flex-col gap-6">
       <PromptBar onGenerate={handleGenerate} isGenerating={isGenerating} />
+
+      {error && (
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+          {error}
+        </div>
+      )}
 
       {isGenerating && (
         <GenerationProgress

@@ -11,7 +11,7 @@ const TOOLS_DIR = path.resolve(process.cwd(), "tools/flux-server");
 export async function GET() {
   try {
     const res = await fetch(`${FLUX_API_URL}/api/status`, {
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(500),
     });
     if (res.ok) {
       const data = await res.json();
