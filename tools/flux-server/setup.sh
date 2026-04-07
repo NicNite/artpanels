@@ -38,7 +38,7 @@ echo ""
 read -rp "Install GPU dependencies for FLUX.1? (requires ~24GB VRAM) [y/N]: " INSTALL_GPU
 if [[ "$INSTALL_GPU" =~ ^[Yy]$ ]]; then
     echo "Installing GPU dependencies (this may take a while)..."
-    pip install -q torch diffusers transformers accelerate safetensors sentencepiece huggingface-hub
+    pip install -q torch diffusers transformers accelerate safetensors sentencepiece huggingface-hub "gguf>=0.10.0"
     echo ""
     echo "GPU dependencies installed."
     echo "The FLUX model (~12.7 GB) will download on first generation."
