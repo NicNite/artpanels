@@ -47,5 +47,8 @@ next-env.d.ts
 # project-specific
 .superpowers/
 public/uploads/
+tools/flux-server/.server.pid
+tools/flux-server/.server.log
+tools/flux-server/__pycache__/
 
 /src/generated/prisma

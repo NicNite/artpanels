@@ -1,0 +1,9 @@
+# Core dependencies (always required)
+fastapi>=0.115
+uvicorn[standard]>=0.34
+sse-starlette>=2.0
+pillow
+python-dotenv
+
+# GPU dependencies (for real FLUX generation)
+# Install separately: pip install torch diffusers transformers accelerate safetensors sentencepiece huggingface-hub
