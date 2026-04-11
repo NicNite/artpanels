@@ -4,6 +4,13 @@ import { db } from "@/lib/db";
 import { readImageFile, saveExportFile } from "@/lib/storage";
 import { generateMesh } from "@/lib/export/mesh";
 import { build3mf } from "@/lib/export/threemf";
+import { rgbToLab } from "@/lib/color/cielab";
+import { deltaE00 } from "@/lib/color/delta-e";
+import { computeHybridDither } from "@/lib/dither/hybrid";
+import { estimateCost } from "@/lib/dither/cost-estimate";
+import { generateLayeredMesh } from "@/lib/export/layered-mesh";
+import type { DitherSettings, PixelDitherInfo } from "@/lib/dither/types";
+import { DEFAULT_DITHER_SETTINGS } from "@/lib/dither/types";
 
 type MappingEntry = {
   sourceRgb: string;
@@ -87,6 +94,10 @@ export async function POST(
 
   const body = await request.json().catch(() => ({}));
   const resolution: number = body.resolution ?? 128;
+  const ditherSettings: DitherSettings = {
+    ...DEFAULT_DITHER_SETTINGS,
+    ...body.dither,
+  };
 
   // 3. Read and resize image
   const imageBuffer = await readImageFile(candidate.image.filePath);
@@ -142,29 +153,124 @@ export async function POST(
     pixels.push({ brightness, materialIndex: nearestIndex });
   }
 
-  // 6. Generate mesh
+  // 6-8. Generate mesh and build 3MF buffer (flat or dithered pipeline)
   const { project } = candidate;
-  const mesh = generateMesh({
-    pixels,
-    gridWidth,
-    gridHeight,
-    panelWidthMm: project.widthMm,
-    panelHeightMm: project.heightMm,
-    thicknessMinMm: project.thicknessMinMm,
-    thicknessMaxMm: project.thicknessMaxMm,
-  });
 
-  // 7. Build materials array
-  const materials = centroids.map((c) => {
-    const filament = filamentMap.get(c.filamentId);
-    const name = filament
-      ? `${filament.brand} ${filament.colorName}`
-      : c.filamentId;
-    return { name, hexColor: c.targetRgb };
-  });
+  let buffer: Buffer;
+  let cost: { filamentSwaps: number; purgeWasteGrams: number; timeOverheadMinutes: number } | undefined;
 
-  // 8. Build 3MF buffer
-  const buffer = await build3mf(mesh, materials);
+  if (ditherSettings.enabled) {
+    // --- Dithered pipeline ---
+    const filamentLabList = filaments.map((f) => {
+      const rgb = hexToRgb(f.hexColor);
+      const lab = rgbToLab(rgb.r, rgb.g, rgb.b);
+      return { id: f.id, lab, hexColor: f.hexColor };
+    });
+
+    const ditherPixels: PixelDitherInfo[] = [];
+    for (let i = 0; i < gridWidth * gridHeight; i++) {
+      const offset = i * channels;
+      const r = rawPixels[offset];
+      const g = rawPixels[offset + 1];
+      const b = rawPixels[offset + 2];
+      const row = Math.floor(i / gridWidth);
+      const col = i % gridWidth;
+
+      const brightness = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      const thickness =
+        project.thicknessMaxMm -
+        brightness * (project.thicknessMaxMm - project.thicknessMinMm);
+      const numLayers = Math.max(
+        1,
+        Math.round(thickness / ditherSettings.layerHeightMm)
+      );
+
+      const targetLab = rgbToLab(r, g, b);
+      const centroidIdx = pixels[i].materialIndex;
+      const assignedFilament = filamentLabList.find(
+        (f) => f.id === centroids[centroidIdx].filamentId
+      ) ?? filamentLabList[0];
+      const colorError = deltaE00(targetLab, assignedFilament.lab);
+
+      ditherPixels.push({
+        row,
+        col,
+        targetLab,
+        assignedFilamentId: assignedFilament.id,
+        assignedLab: assignedFilament.lab,
+        colorError,
+        thickness,
+        numLayers,
+      });
+    }
+
+    const layerColorMap = computeHybridDither({
+      pixels: ditherPixels,
+      gridWidth,
+      gridHeight,
+      filaments: filamentLabList,
+      settings: ditherSettings,
+      panelWidthMm: project.widthMm,
+      panelHeightMm: project.heightMm,
+    });
+
+    cost = estimateCost(layerColorMap);
+
+    const layeredMaterials = centroids.map((c) => {
+      const filament = filamentMap.get(c.filamentId);
+      const name = filament
+        ? `${filament.brand} ${filament.colorName}`
+        : c.filamentId;
+      return { id: c.filamentId, name, hexColor: c.targetRgb };
+    });
+
+    const blockCols = Math.max(
+      1,
+      Math.round(project.widthMm / ditherSettings.blockSizeMm)
+    );
+    const blockRows = Math.max(
+      1,
+      Math.round(project.heightMm / ditherSettings.blockSizeMm)
+    );
+
+    const mesh = generateLayeredMesh({
+      layers: layerColorMap,
+      materials: layeredMaterials,
+      blockCols,
+      blockRows,
+      panelWidthMm: project.widthMm,
+      panelHeightMm: project.heightMm,
+      layerHeightMm: ditherSettings.layerHeightMm,
+    });
+
+    const materials3mf = layeredMaterials.map((m) => ({
+      name: m.name,
+      hexColor: m.hexColor,
+    }));
+
+    buffer = await build3mf(mesh, materials3mf);
+  } else {
+    // --- Flat pipeline (existing) ---
+    const mesh = generateMesh({
+      pixels,
+      gridWidth,
+      gridHeight,
+      panelWidthMm: project.widthMm,
+      panelHeightMm: project.heightMm,
+      thicknessMinMm: project.thicknessMinMm,
+      thicknessMaxMm: project.thicknessMaxMm,
+    });
+
+    const materials = centroids.map((c) => {
+      const filament = filamentMap.get(c.filamentId);
+      const name = filament
+        ? `${filament.brand} ${filament.colorName}`
+        : c.filamentId;
+      return { name, hexColor: c.targetRgb };
+    });
+
+    buffer = await build3mf(mesh, materials);
+  }
 
   // 9. Save export file
   const filePath = await saveExportFile(cid, buffer);
@@ -176,7 +282,10 @@ export async function POST(
       colorMappingId: colorMapping.id,
       filePath,
       format: "3mf",
-      settings: { resolution },
+      settings: {
+        resolution,
+        ...(ditherSettings.enabled ? { dither: ditherSettings, cost } : {}),
+      },
     },
   });
 
