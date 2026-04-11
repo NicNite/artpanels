@@ -2,7 +2,7 @@ import type { Lab } from "@/lib/color/cielab";
 
 export type DitherSettings = {
   enabled: boolean;
-  blockSizeMm: number;      // 1.6–10, default 3
+  blockSizeMm: number;      // 0.8–10, default 3
   zEnabled: boolean;         // default true
   xyEnabled: boolean;        // default true
   layerHeightMm: number;    // default 0.2

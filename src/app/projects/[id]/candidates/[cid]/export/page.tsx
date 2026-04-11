@@ -139,20 +139,20 @@ export default function ExportPage({
               <div className="space-y-3 pl-6">
                 <div className="space-y-1">
                   <Label htmlFor="blockSize">
-                    Block Size: {blockSize}mm
+                    Dot Size: {blockSize}mm
                   </Label>
                   <input
                     id="blockSize"
                     type="range"
-                    min={1.6}
+                    min={0.8}
                     max={10}
-                    step={0.2}
+                    step={0.1}
                     value={blockSize}
                     onChange={(e) => setBlockSize(Number(e.target.value))}
                     className="w-48"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Smaller = finer detail, more filament swaps
+                    Min 0.8mm (2× nozzle width). Below 2mm is experimental — may show color bleed at boundaries.
                   </p>
                 </div>
 

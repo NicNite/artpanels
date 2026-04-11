@@ -81,6 +81,7 @@ export function ColorMapper({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [ditherPreviewEnabled, setDitherPreviewEnabled] = useState(false);
   const [previewBlockSize, setPreviewBlockSize] = useState(3);
+  const [previewCanvasSize, setPreviewCanvasSize] = useState(256);
   const ditherCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Per-row override picker
@@ -173,20 +174,29 @@ export function ColorMapper({
     const img = new window.Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
-      const blockPx = Math.max(4, Math.round(previewBlockSize * 10));
-      const cols = Math.ceil(img.width / blockPx);
-      const rows = Math.ceil(img.height / blockPx);
+      // Downscale to canvas size to match export pipeline resolution
+      const w = previewCanvasSize;
+      const h = Math.round((img.height / img.width) * w);
 
-      canvas.width = img.width;
-      canvas.height = img.height;
+      // Block size in pixels: scale mm to pixels using canvas size
+      // At 128px canvas for a 300mm panel, 1mm ≈ 0.43px
+      // Use a simple ratio: blockPx = blockSizeMm * (canvasSize / panelWidthMm)
+      // Since we don't know panel width here, use canvasSize directly as a proxy
+      // More blocks = more detail. blockPx = max(2, blockSizeMm * canvasSize / 300)
+      const blockPx = Math.max(2, Math.round(previewBlockSize * w / 300));
+      const cols = Math.ceil(w / blockPx);
+      const rows = Math.ceil(h / blockPx);
+
+      canvas.width = w;
+      canvas.height = h;
 
       const offscreen = document.createElement("canvas");
-      offscreen.width = img.width;
-      offscreen.height = img.height;
+      offscreen.width = w;
+      offscreen.height = h;
       const offCtx = offscreen.getContext("2d")!;
-      offCtx.drawImage(img, 0, 0);
+      offCtx.drawImage(img, 0, 0, w, h);
 
-      const imageData = offCtx.getImageData(0, 0, img.width, img.height);
+      const imageData = offCtx.getImageData(0, 0, w, h);
       const mappingEntries = mapping.mappings;
 
       // Simple 4x4 Bayer matrix (normalized)
@@ -199,9 +209,9 @@ export function ColorMapper({
 
       for (let br = 0; br < rows; br++) {
         for (let bc = 0; bc < cols; bc++) {
-          const cx = Math.min(bc * blockPx + Math.floor(blockPx / 2), img.width - 1);
-          const cy = Math.min(br * blockPx + Math.floor(blockPx / 2), img.height - 1);
-          const idx = (cy * img.width + cx) * 4;
+          const cx = Math.min(bc * blockPx + Math.floor(blockPx / 2), w - 1);
+          const cy = Math.min(br * blockPx + Math.floor(blockPx / 2), h - 1);
+          const idx = (cy * w + cx) * 4;
           const r = imageData.data[idx];
           const g = imageData.data[idx + 1];
           const b = imageData.data[idx + 2];
@@ -230,14 +240,14 @@ export function ColorMapper({
           ctx.fillRect(
             bc * blockPx,
             br * blockPx,
-            Math.min(blockPx, img.width - bc * blockPx),
-            Math.min(blockPx, img.height - br * blockPx)
+            Math.min(blockPx, w - bc * blockPx),
+            Math.min(blockPx, h - br * blockPx)
           );
         }
       }
     };
     img.src = imagePath;
-  }, [ditherPreviewEnabled, mapping, previewBlockSize, imagePath]);
+  }, [ditherPreviewEnabled, mapping, previewBlockSize, previewCanvasSize, imagePath]);
 
   // Debounced catalog search for per-row picker
   useEffect(() => {
@@ -482,24 +492,44 @@ export function ColorMapper({
           </label>
         </div>
         {ditherPreviewEnabled && (
-          <div className="flex items-center gap-2">
-            <label htmlFor="previewBlockSize" className="text-sm">
-              Block size:
-            </label>
-            <input
-              id="previewBlockSize"
-              type="range"
-              min={1.5}
-              max={10}
-              step={0.5}
-              value={previewBlockSize}
-              onChange={(e) => setPreviewBlockSize(Number(e.target.value))}
-              className="w-32"
-            />
-            <span className="text-sm text-muted-foreground">
-              {previewBlockSize}mm
-            </span>
-          </div>
+          <>
+            <div className="flex items-center gap-2">
+              <label htmlFor="previewBlockSize" className="text-sm">
+                Dot size:
+              </label>
+              <input
+                id="previewBlockSize"
+                type="range"
+                min={0.8}
+                max={10}
+                step={0.1}
+                value={previewBlockSize}
+                onChange={(e) => setPreviewBlockSize(Number(e.target.value))}
+                className="w-32"
+              />
+              <span className="text-sm text-muted-foreground">
+                {previewBlockSize}mm
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <label htmlFor="previewCanvasSize" className="text-sm">
+                Canvas:
+              </label>
+              <input
+                id="previewCanvasSize"
+                type="range"
+                min={64}
+                max={512}
+                step={32}
+                value={previewCanvasSize}
+                onChange={(e) => setPreviewCanvasSize(Number(e.target.value))}
+                className="w-32"
+              />
+              <span className="text-sm text-muted-foreground">
+                {previewCanvasSize}px
+              </span>
+            </div>
+          </>
         )}
       </div>
 
