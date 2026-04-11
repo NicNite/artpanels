@@ -30,5 +30,7 @@ export async function PATCH(
     },
   });
 
-  return NextResponse.json(updated);
+  return NextResponse.json(
+    JSON.parse(JSON.stringify(updated, (_, v) => typeof v === "bigint" ? Number(v) : v))
+  );
 }

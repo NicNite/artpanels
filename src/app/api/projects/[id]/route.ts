@@ -15,6 +15,7 @@ export async function GET(
       },
       generations: {
         orderBy: { createdAt: "desc" },
+        include: { images: true },
       },
     },
   });
@@ -23,7 +24,9 @@ export async function GET(
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
-  return NextResponse.json(project);
+  return NextResponse.json(
+    JSON.parse(JSON.stringify(project, (_, v) => typeof v === "bigint" ? Number(v) : v))
+  );
 }
 
 export async function PATCH(

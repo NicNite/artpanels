@@ -18,7 +18,9 @@ export async function GET(
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json(candidates);
+  return NextResponse.json(
+    JSON.parse(JSON.stringify(candidates, (_, v) => typeof v === "bigint" ? Number(v) : v))
+  );
 }
 
 export async function POST(
@@ -74,5 +76,8 @@ export async function POST(
     }),
   ]);
 
-  return NextResponse.json(candidate, { status: 201 });
+  return NextResponse.json(
+    JSON.parse(JSON.stringify(candidate, (_, v) => typeof v === "bigint" ? Number(v) : v)),
+    { status: 201 }
+  );
 }

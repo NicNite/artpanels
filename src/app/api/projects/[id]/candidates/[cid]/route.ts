@@ -20,7 +20,9 @@ export async function GET(
     return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
   }
 
-  return NextResponse.json(candidate);
+  return NextResponse.json(
+    JSON.parse(JSON.stringify(candidate, (_, v) => typeof v === "bigint" ? Number(v) : v))
+  );
 }
 
 export async function PATCH(
@@ -50,7 +52,9 @@ export async function PATCH(
     include: { image: true },
   });
 
-  return NextResponse.json(updated);
+  return NextResponse.json(
+    JSON.parse(JSON.stringify(updated, (_, v) => typeof v === "bigint" ? Number(v) : v))
+  );
 }
 
 export async function DELETE(

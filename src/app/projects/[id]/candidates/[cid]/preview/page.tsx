@@ -1,16 +1,6 @@
 import { db } from "@/lib/db";
 import { notFound } from "next/navigation";
-import dynamic from "next/dynamic";
-
-const PanelViewer = dynamic(
-  () => import("@/components/panel-viewer").then((m) => m.PanelViewer),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="w-full aspect-[4/3] rounded-lg border bg-black animate-pulse" />
-    ),
-  }
-);
+import { PanelViewerLoader as PanelViewer } from "@/components/panel-viewer-loader";
 
 export default async function PreviewPage({
   params,
