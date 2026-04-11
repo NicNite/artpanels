@@ -10,7 +10,20 @@ type ExportRecord = {
   id: string;
   filePath: string;
   format: string;
-  settings: { resolution?: number } | null;
+  settings: {
+    resolution?: number;
+    dither?: {
+      enabled: boolean;
+      blockSizeMm: number;
+      zEnabled: boolean;
+      xyEnabled: boolean;
+    };
+    cost?: {
+      filamentSwaps: number;
+      purgeWasteGrams: number;
+      timeOverheadMinutes: number;
+    };
+  } | null;
   createdAt: string;
 };
 
@@ -26,6 +39,13 @@ export default function ExportPage({
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [ditherEnabled, setDitherEnabled] = useState(false);
+  const [blockSize, setBlockSize] = useState(3);
+  const [zEnabled, setZEnabled] = useState(true);
+  const [xyEnabled, setXYEnabled] = useState(true);
+  const [layerHeight, setLayerHeight] = useState(0.2);
+  const [nozzleWidth, setNozzleWidth] = useState(0.4);
 
   const fetchExports = useCallback(async () => {
     setLoading(true);
@@ -52,7 +72,19 @@ export default function ExportPage({
       const res = await fetch(`/api/projects/${id}/candidates/${cid}/exports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resolution }),
+        body: JSON.stringify({
+          resolution,
+          dither: ditherEnabled
+            ? {
+                enabled: true,
+                blockSizeMm: blockSize,
+                zEnabled,
+                xyEnabled,
+                layerHeightMm: layerHeight,
+                nozzleWidthMm: nozzleWidth,
+              }
+            : { enabled: false },
+        }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -91,6 +123,92 @@ export default function ExportPage({
               Image will be resized to this square resolution before meshing.
             </p>
           </div>
+
+          <div className="space-y-3 border-t pt-4">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="ditherEnabled"
+                checked={ditherEnabled}
+                onChange={(e) => setDitherEnabled(e.target.checked)}
+              />
+              <Label htmlFor="ditherEnabled">Enable Color Dithering</Label>
+            </div>
+
+            {ditherEnabled && (
+              <div className="space-y-3 pl-6">
+                <div className="space-y-1">
+                  <Label htmlFor="blockSize">
+                    Block Size: {blockSize}mm
+                  </Label>
+                  <input
+                    id="blockSize"
+                    type="range"
+                    min={1.6}
+                    max={10}
+                    step={0.2}
+                    value={blockSize}
+                    onChange={(e) => setBlockSize(Number(e.target.value))}
+                    className="w-48"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Smaller = finer detail, more filament swaps
+                  </p>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="zEnabled"
+                      checked={zEnabled}
+                      onChange={(e) => setZEnabled(e.target.checked)}
+                    />
+                    <Label htmlFor="zEnabled">Z-axis dithering</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="xyEnabled"
+                      checked={xyEnabled}
+                      onChange={(e) => setXYEnabled(e.target.checked)}
+                    />
+                    <Label htmlFor="xyEnabled">XY block dithering</Label>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="layerHeight">Layer Height (mm)</Label>
+                    <Input
+                      id="layerHeight"
+                      type="number"
+                      min={0.08}
+                      max={0.4}
+                      step={0.04}
+                      value={layerHeight}
+                      onChange={(e) => setLayerHeight(Number(e.target.value))}
+                      className="w-24"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="nozzleWidth">Nozzle Width (mm)</Label>
+                    <Input
+                      id="nozzleWidth"
+                      type="number"
+                      min={0.2}
+                      max={0.8}
+                      step={0.1}
+                      value={nozzleWidth}
+                      onChange={(e) => setNozzleWidth(Number(e.target.value))}
+                      className="w-24"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button onClick={handleGenerate} disabled={generating}>
             {generating ? "Generating…" : "Generate 3MF"}
@@ -111,7 +229,12 @@ export default function ExportPage({
                 <p className="text-sm font-medium uppercase">{exp.format}</p>
                 <p className="text-sm text-muted-foreground">
                   Resolution:{" "}
-                  {exp.settings?.resolution ?? "—"}px &middot;{" "}
+                  {exp.settings?.resolution ?? "—"}px
+                  {exp.settings?.dither?.enabled && " · Dithered"}
+                  {exp.settings?.cost && (
+                    <> · {exp.settings.cost.filamentSwaps} swaps · {exp.settings.cost.purgeWasteGrams.toFixed(1)}g purge · +{exp.settings.cost.timeOverheadMinutes.toFixed(1)}min</>
+                  )}
+                  {" "}&middot;{" "}
                   {new Date(exp.createdAt).toLocaleString()}
                 </p>
               </div>
