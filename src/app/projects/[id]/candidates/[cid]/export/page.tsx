@@ -121,6 +121,9 @@ export default function ExportPage({
             />
             <p className="text-sm text-muted-foreground">
               Image will be resized to this square resolution before meshing.
+              {ditherEnabled && (
+                <> Grid: {resolution} × {resolution} dots at {blockSize}mm = <strong>{(resolution * blockSize).toFixed(0)} × {(resolution * blockSize).toFixed(0)} mm</strong> plate</>
+              )}
             </p>
           </div>
 

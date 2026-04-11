@@ -529,6 +529,9 @@ export function ColorMapper({
                 {previewCanvasSize}px
               </span>
             </div>
+            <span className="text-xs text-muted-foreground">
+              {previewCanvasSize} × {previewCanvasSize} dots @ {previewBlockSize}mm = {(previewCanvasSize * previewBlockSize).toFixed(0)} × {(previewCanvasSize * previewBlockSize).toFixed(0)} mm plate
+            </span>
           </>
         )}
       </div>
