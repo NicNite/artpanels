@@ -79,6 +79,9 @@ export function ColorMapper({
   const [loading, setLoading] = useState(false);
   const [filaments, setFilaments] = useState<FilamentInfo[]>(initialFilaments);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [ditherPreviewEnabled, setDitherPreviewEnabled] = useState(false);
+  const [previewBlockSize, setPreviewBlockSize] = useState(3);
+  const ditherCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Per-row override picker
   const [overrideOpen, setOverrideOpen] = useState<number | null>(null);
@@ -159,6 +162,82 @@ export function ColorMapper({
     };
     img.src = imagePath;
   }, [mapping, imagePath]);
+
+  // Dithered preview canvas
+  useEffect(() => {
+    if (!ditherPreviewEnabled || !mapping || !ditherCanvasRef.current) return;
+    const canvas = ditherCanvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const img = new window.Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const blockPx = Math.max(4, Math.round(previewBlockSize * 10));
+      const cols = Math.ceil(img.width / blockPx);
+      const rows = Math.ceil(img.height / blockPx);
+
+      canvas.width = img.width;
+      canvas.height = img.height;
+
+      const offscreen = document.createElement("canvas");
+      offscreen.width = img.width;
+      offscreen.height = img.height;
+      const offCtx = offscreen.getContext("2d")!;
+      offCtx.drawImage(img, 0, 0);
+
+      const imageData = offCtx.getImageData(0, 0, img.width, img.height);
+      const mappingEntries = mapping.mappings;
+
+      // Simple 4x4 Bayer matrix (normalized)
+      const bayer4 = [
+        [0 / 16, 8 / 16, 2 / 16, 10 / 16],
+        [12 / 16, 4 / 16, 14 / 16, 6 / 16],
+        [3 / 16, 11 / 16, 1 / 16, 9 / 16],
+        [15 / 16, 7 / 16, 13 / 16, 5 / 16],
+      ];
+
+      for (let br = 0; br < rows; br++) {
+        for (let bc = 0; bc < cols; bc++) {
+          const cx = Math.min(bc * blockPx + Math.floor(blockPx / 2), img.width - 1);
+          const cy = Math.min(br * blockPx + Math.floor(blockPx / 2), img.height - 1);
+          const idx = (cy * img.width + cx) * 4;
+          const r = imageData.data[idx];
+          const g = imageData.data[idx + 1];
+          const b = imageData.data[idx + 2];
+
+          let best1 = { hex: "#000000", dist: Infinity };
+          let best2 = { hex: "#000000", dist: Infinity };
+          for (const m of mappingEntries) {
+            const tr = parseInt(m.targetRgb.slice(1, 3), 16);
+            const tg = parseInt(m.targetRgb.slice(3, 5), 16);
+            const tb = parseInt(m.targetRgb.slice(5, 7), 16);
+            const dist = Math.sqrt((r - tr) ** 2 + (g - tg) ** 2 + (b - tb) ** 2);
+            if (dist < best1.dist) {
+              best2 = best1;
+              best1 = { hex: m.targetRgb, dist };
+            } else if (dist < best2.dist) {
+              best2 = { hex: m.targetRgb, dist };
+            }
+          }
+
+          const totalDist = best1.dist + best2.dist;
+          const ratio = totalDist > 0 ? 1 - best1.dist / totalDist : 1;
+          const threshold = bayer4[br % 4][bc % 4];
+          const color = ratio > threshold ? best1.hex : best2.hex;
+
+          ctx.fillStyle = color;
+          ctx.fillRect(
+            bc * blockPx,
+            br * blockPx,
+            Math.min(blockPx, img.width - bc * blockPx),
+            Math.min(blockPx, img.height - br * blockPx)
+          );
+        }
+      }
+    };
+    img.src = imagePath;
+  }, [ditherPreviewEnabled, mapping, previewBlockSize, imagePath]);
 
   // Debounced catalog search for per-row picker
   useEffect(() => {
@@ -372,6 +451,56 @@ export function ColorMapper({
             </div>
           )}
         </div>
+        {ditherPreviewEnabled && (
+          <div className="flex-1">
+            <h3 className="text-sm font-medium mb-2">Dithered Preview</h3>
+            {mapping ? (
+              <canvas
+                ref={ditherCanvasRef}
+                className="rounded-lg border w-full"
+                style={{ imageRendering: "pixelated" }}
+              />
+            ) : (
+              <div className="rounded-lg border aspect-square bg-muted flex items-center justify-center text-muted-foreground text-sm">
+                Run color analysis first
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-4 pt-2">
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="ditherPreview"
+            checked={ditherPreviewEnabled}
+            onChange={(e) => setDitherPreviewEnabled(e.target.checked)}
+          />
+          <label htmlFor="ditherPreview" className="text-sm">
+            Show dithered preview
+          </label>
+        </div>
+        {ditherPreviewEnabled && (
+          <div className="flex items-center gap-2">
+            <label htmlFor="previewBlockSize" className="text-sm">
+              Block size:
+            </label>
+            <input
+              id="previewBlockSize"
+              type="range"
+              min={1.5}
+              max={10}
+              step={0.5}
+              value={previewBlockSize}
+              onChange={(e) => setPreviewBlockSize(Number(e.target.value))}
+              className="w-32"
+            />
+            <span className="text-sm text-muted-foreground">
+              {previewBlockSize}mm
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Controls */}
